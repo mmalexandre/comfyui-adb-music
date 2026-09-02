@@ -8,6 +8,13 @@ import folder_paths
 
 from .adb_music_player import ADBMusicPlayer
 
+COLOR_PALETTE = {
+    "#5b5b5b", "#a6a6a6", "#d94f4f", "#e58f2a",
+    "#d6b52c", "#66a34a", "#39a89e", "#3b9fc4",
+    "#4f78c4", "#6d5acb", "#a052b5", "#d45d9a",
+    "#c87954", "#8d6e63", "#78909c", "#f0f0f0",
+}
+
 
 def resolve_audio_directory(directory):
     if os.path.isabs(directory):
@@ -19,16 +26,30 @@ def metadata_path(audio_path):
     return f"{audio_path}.adb-music-player.json"
 
 
+def audio_identity(audio_path):
+    audio_stat = os.stat(audio_path)
+    return {
+        "file_mtime_ns": audio_stat.st_mtime_ns,
+        "file_size": audio_stat.st_size,
+    }
+
+
 def read_metadata(audio_path):
     try:
+        identity = audio_identity(audio_path)
         with open(metadata_path(audio_path), encoding="utf-8") as metadata_file:
             metadata = json.load(metadata_file)
     except (OSError, ValueError):
         return {}
-    return metadata if isinstance(metadata, dict) else {}
+    if not isinstance(metadata, dict):
+        return {}
+    if metadata.get("file_mtime_ns") != identity["file_mtime_ns"] or metadata.get("file_size") != identity["file_size"]:
+        return {}
+    return metadata
 
 
 def write_metadata(audio_path, metadata):
+    metadata.update(audio_identity(audio_path))
     metadata_file_path = metadata_path(audio_path)
     metadata_directory = os.path.dirname(metadata_file_path)
     file_descriptor, temporary_path = tempfile.mkstemp(dir=metadata_directory, prefix=".adb-metadata-", text=True)
@@ -59,15 +80,15 @@ async def list_audio_files(request):
                 path = os.path.join(directory, filename)
                 relative_path = os.path.relpath(path, audio_directory)
                 metadata = read_metadata(path)
-                files.append({
+                files.append((os.stat(path).st_mtime_ns, {
                     "name": relative_path.replace(os.path.sep, "/"),
                     "path": path,
-                    "color": metadata.get("color"),
+                    "color": metadata.get("color") if metadata.get("color") in COLOR_PALETTE else None,
                     "downloaded": bool(metadata.get("downloaded", False)),
-                })
+                }))
 
-    files.sort(key=lambda file: file["name"].casefold())
-    return web.json_response(files)
+    files.sort(key=lambda item: item[0], reverse=True)
+    return web.json_response([file for _, file in files])
 
 
 @PromptServer.instance.routes.post("/adb-music-player/audio-metadata")
@@ -86,7 +107,7 @@ async def update_audio_metadata(request):
     metadata = read_metadata(path)
     if "color" in payload:
         color = payload["color"]
-        if color is not None and (not isinstance(color, str) or not color.startswith("#") or len(color) not in (4, 7)):
+        if color is not None and color not in COLOR_PALETTE:
             raise web.HTTPBadRequest(text="Invalid color")
         metadata["color"] = color
     if payload.get("downloaded") is True:

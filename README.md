@@ -2,9 +2,10 @@
 
 A small [ComfyUI](https://github.com/comfyanonymous/ComfyUI) custom node named **ADB Music Player**.
 
-The node accepts a directory and returns it unchanged. By default, the ComfyUI editor lists audio files found recursively under `ComfyUI/output/audio`. Relative directories are rooted at the ComfyUI directory; absolute paths are used as provided. Use the refresh control after saving a new file, then use a row's play button to listen to it. Each row has a color control, and clicking a filename downloads it and records that it was downloaded.
+The node accepts a directory and returns it unchanged. By default, the ComfyUI editor lists audio files found recursively under `ComfyUI/output/audio`. Relative directories are rooted at the ComfyUI directory; absolute paths are used as provided. Use the refresh control after saving a new file, then use a row's play button to listen to it. Each row has a 16-color control, and clicking a filename downloads it and records that it was downloaded.
 
 Audio colors and download state are persisted in a sidecar file next to each audio file, named `<audio-file>.adb-music-player.json`. These metadata files are ignored by the audio list.
+Each sidecar also stores the audio file's modification time and size; metadata is discarded automatically when the audio file changes.
 
 ## Install
 

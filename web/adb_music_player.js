@@ -10,7 +10,55 @@ const COLOR_PALETTE = [
     "#c87954", "#8d6e63", "#78909c", "#f0f0f0",
 ];
 const LIST_HEIGHT = 180;
-const LIST_CHROME_HEIGHT = 40;
+const LIST_CHROME_HEIGHT = 68;
+
+const progressStyles = document.createElement("style");
+progressStyles.textContent = `
+    .adb-music-player-progress {
+        --progress: 0%;
+        accent-color: #fff;
+    }
+    .adb-music-player-progress::-webkit-slider-runnable-track {
+        background: linear-gradient(to right, #fff var(--progress), var(--descrip-text) var(--progress));
+        border-radius: 2px;
+        height: 3px;
+    }
+    .adb-music-player-progress::-webkit-slider-thumb {
+        appearance: none;
+        background: transparent;
+        border: 0;
+        height: 12px;
+        margin-top: -6.5px;
+        opacity: 0;
+        width: 12px;
+    }
+    .adb-music-player-progress:hover::-webkit-slider-thumb {
+        background: #fff;
+        opacity: 1;
+    }
+    .adb-music-player-progress::-moz-range-track {
+        background: var(--descrip-text);
+        border-radius: 2px;
+        height: 3px;
+    }
+    .adb-music-player-progress::-moz-range-progress {
+        background: #fff;
+        border-radius: 2px;
+        height: 3px;
+    }
+    .adb-music-player-progress::-moz-range-thumb {
+        background: transparent;
+        border: 0;
+        height: 12px;
+        opacity: 0;
+        width: 12px;
+    }
+    .adb-music-player-progress:hover::-moz-range-thumb {
+        background: #fff;
+        opacity: 1;
+    }
+`;
+document.head.append(progressStyles);
 
 function audioUrl(path) {
     return `/adb-music-player/audio-file?path=${encodeURIComponent(path)}`;
@@ -60,6 +108,14 @@ app.registerExtension({
         header.append(refreshButton);
         container.append(header);
 
+        const filterInput = document.createElement("input");
+        filterInput.type = "search";
+        filterInput.placeholder = "Filter files";
+        filterInput.title = "Filter audio files";
+        filterInput.setAttribute("aria-label", "Filter audio files");
+        filterInput.style.cssText = "box-sizing:border-box;min-height:24px;padding:2px 4px;width:100%";
+        container.append(filterInput);
+
         const list = document.createElement("div");
         list.style.cssText = `box-sizing:border-box;display:flex;flex-direction:column;gap:2px;height:${LIST_HEIGHT}px;min-height:0;overflow-y:auto;padding:2px 0`;
         container.append(list);
@@ -69,6 +125,7 @@ app.registerExtension({
         let currentProgress;
         let currentTimeLabel;
         let currentDurationLabel;
+        let currentFilePath;
         let pendingSeekFraction;
 
         function formatTime(seconds) {
@@ -88,6 +145,8 @@ app.registerExtension({
                 currentProgress.max = audio.duration;
             }
             currentProgress.value = audio.currentTime;
+            const progressFraction = audio.duration > 0 ? audio.currentTime / audio.duration : 0;
+            currentProgress.style.setProperty("--progress", `${progressFraction * 100}%`);
             currentTimeLabel.textContent = formatTime(audio.currentTime);
             currentDurationLabel.textContent = formatTime(audio.duration);
         }
@@ -110,6 +169,7 @@ app.registerExtension({
                 currentTimeLabel = undefined;
                 currentDurationLabel = undefined;
             }
+            currentFilePath = undefined;
             pendingSeekFraction = undefined;
             audio.pause();
         }
@@ -121,6 +181,7 @@ app.registerExtension({
             }
 
             stopCurrent();
+            currentFilePath = file.path;
             pendingSeekFraction = Number.isFinite(startFraction) ? startFraction : undefined;
             audio.src = audioUrl(file.path);
             audio.play().then(() => {
@@ -150,9 +211,14 @@ app.registerExtension({
         });
 
         function render(files) {
+            const activeFilePath = currentFilePath;
+            currentButton = undefined;
+            currentProgress = undefined;
+            currentTimeLabel = undefined;
+            currentDurationLabel = undefined;
             list.replaceChildren();
             if (!files.length) {
-                status.textContent = "No audio files";
+                status.textContent = filterInput.value ? "No matching audio files" : "No audio files";
                 resizeNode();
                 return;
             }
@@ -235,6 +301,7 @@ app.registerExtension({
                 progress.step = "0.1";
                 progress.value = "0";
                 progress.title = `Seek ${file.name}`;
+                progress.className = "adb-music-player-progress";
                 progress.style.cssText = "box-sizing:border-box;cursor:pointer;height:12px;margin:0;width:100%";
 
                 const timeRow = document.createElement("div");
@@ -271,6 +338,15 @@ app.registerExtension({
                 playButton.style.cssText = "cursor:pointer;flex:0 0 30px;padding:2px 5px";
                 playButton.addEventListener("click", () => playFile(file, playButton, progress, timeLabel, durationLabel));
 
+                if (file.path === activeFilePath) {
+                    currentButton = playButton;
+                    currentProgress = progress;
+                    currentTimeLabel = timeLabel;
+                    currentDurationLabel = durationLabel;
+                    playButton.textContent = audio.paused ? "▶" : "Ⅱ";
+                    updateProgress();
+                }
+
                 row.append(label, playback, playButton);
                 list.append(row);
             }
@@ -279,6 +355,12 @@ app.registerExtension({
 
         let refreshInProgress = false;
         let lastFilesSignature;
+        let files = [];
+
+        function renderFilteredFiles() {
+            const filter = filterInput.value.trim().toLocaleLowerCase();
+            render(filter ? files.filter((file) => file.name.toLocaleLowerCase().includes(filter)) : files);
+        }
 
         async function refresh() {
             if (refreshInProgress) {
@@ -292,23 +374,21 @@ app.registerExtension({
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
                 }
-                const files = (await response.json()).filter((file) => AUDIO_EXTENSIONS.test(file.name));
+                files = (await response.json()).filter((file) => AUDIO_EXTENSIONS.test(file.name));
                 const filesSignature = JSON.stringify(files);
                 if (filesSignature !== lastFilesSignature) {
                     lastFilesSignature = filesSignature;
-                    render(files);
+                    renderFilteredFiles();
                 }
             } catch (error) {
-                lastFilesSignature = undefined;
-                list.replaceChildren();
-                status.textContent = "Could not load audio files";
-                resizeNode();
+                status.textContent = "Could not refresh audio files";
                 console.error("ADB Music Player: failed to load audio files", error);
             } finally {
                 refreshInProgress = false;
             }
         }
 
+        filterInput.addEventListener("input", renderFilteredFiles);
         refreshButton.addEventListener("click", refresh);
         const refreshInterval = setInterval(refresh, 2000);
         node.onRemoved = () => clearInterval(refreshInterval);
@@ -322,7 +402,7 @@ app.registerExtension({
         }
         const widget = node.addDOMWidget("audio_files", "audio_files", container, {
             serialize: false,
-            hideOnZoom: true,
+            hideOnZoom: false,
         });
         let listHeight = LIST_HEIGHT;
         widget.computeSize = () => [node.size[0], listHeight + LIST_CHROME_HEIGHT];
