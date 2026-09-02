@@ -3,14 +3,14 @@ class ADBMusicPlayer:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "Test1": ("STRING", {"default": ""}),
+                "directory": ("STRING", {"default": "audio"}),
             },
         }
 
     RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("Test1",)
+    RETURN_NAMES = ("directory",)
     FUNCTION = "play"
     CATEGORY = "ADB"
 
-    def play(self, Test1):
-        return (Test1,)
+    def play(self, directory):
+        return (directory,)
