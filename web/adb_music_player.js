@@ -131,10 +131,12 @@ app.registerExtension({
                 const row = document.createElement("div");
                 row.style.cssText = `box-sizing:border-box;display:flex;align-items:center;gap:6px;min-height:26px;padding:2px 4px;background:${index % 2 === 0 ? "rgba(128,128,128,0.16)" : "transparent"}`;
 
-                const label = document.createElement("span");
+                const label = document.createElement("a");
+                label.href = audioUrl(file.path);
+                label.download = file.name;
                 label.textContent = file.name;
                 label.title = file.name;
-                label.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px";
+                label.style.cssText = "color:var(--fg-color);cursor:pointer;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px";
 
                 const playback = document.createElement("div");
                 playback.style.cssText = "display:flex;flex:0 1 345px;flex-direction:column;gap:1px;min-width:70px";
