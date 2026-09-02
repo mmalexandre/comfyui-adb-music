@@ -15,7 +15,7 @@ def resolve_audio_directory(directory):
 
 @PromptServer.instance.routes.get("/adb-music-player/audio-files")
 async def list_audio_files(request):
-    audio_directory = resolve_audio_directory(request.query.get("directory", "audio"))
+    audio_directory = resolve_audio_directory(request.query.get("directory", "output/audio"))
     audio_extensions = {".mp3", ".wav", ".ogg", ".oga", ".flac", ".m4a", ".aac", ".opus"}
     files = []
 

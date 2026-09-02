@@ -2,7 +2,7 @@
 
 A small [ComfyUI](https://github.com/comfyanonymous/ComfyUI) custom node named **ADB Music Player**.
 
-The node accepts a directory and returns it unchanged. By default, the ComfyUI editor lists audio files found recursively under `ComfyUI/audio` beneath the input. Relative directories are rooted at the ComfyUI directory; absolute paths are used as provided. Use the refresh control after saving a new file, then use a row's play button to listen to it.
+The node accepts a directory and returns it unchanged. By default, the ComfyUI editor lists audio files found recursively under `ComfyUI/output/audio`. Relative directories are rooted at the ComfyUI directory; absolute paths are used as provided. Use the refresh control after saving a new file, then use a row's play button to listen to it.
 
 ## Install
 

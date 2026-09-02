@@ -3,7 +3,7 @@ class ADBMusicPlayer:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "directory": ("STRING", {"default": "audio"}),
+                "directory": ("STRING", {"default": "output/audio"}),
             },
         }
 
