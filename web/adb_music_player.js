@@ -391,7 +391,12 @@ app.registerExtension({
         filterInput.addEventListener("input", renderFilteredFiles);
         refreshButton.addEventListener("click", refresh);
         const refreshInterval = setInterval(refresh, 2000);
-        node.onRemoved = () => clearInterval(refreshInterval);
+        const originalOnRemoved = node.onRemoved;
+        node.onRemoved = function () {
+            clearInterval(refreshInterval);
+            stopCurrent();
+            originalOnRemoved?.apply(this, arguments);
+        };
         const directoryWidget = node.widgets.find((item) => item.name === "directory");
         if (directoryWidget) {
             const originalCallback = directoryWidget.callback;
@@ -400,6 +405,7 @@ app.registerExtension({
                 refresh();
             };
         }
+
         const widget = node.addDOMWidget("audio_files", "audio_files", container, {
             serialize: false,
             hideOnZoom: false,
@@ -414,6 +420,7 @@ app.registerExtension({
             listHeight = LIST_HEIGHT + Math.max(0, size[1] - minimumNodeHeight);
             list.style.height = `${listHeight}px`;
         };
+
         await refresh();
     },
 });
