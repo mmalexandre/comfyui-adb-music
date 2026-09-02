@@ -120,7 +120,6 @@ app.registerExtension({
             }
 
             refreshInProgress = true;
-            refreshButton.disabled = true;
             try {
                 const directory = node.widgets.find((item) => item.name === "directory")?.value || "audio";
                 const response = await fetch(`${LIST_URL}?directory=${encodeURIComponent(directory)}`, { cache: "no-store" });
@@ -141,7 +140,6 @@ app.registerExtension({
                 console.error("ADB Music Player: failed to load audio files", error);
             } finally {
                 refreshInProgress = false;
-                refreshButton.disabled = false;
             }
         }
 
