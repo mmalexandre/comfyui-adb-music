@@ -1,12 +1,24 @@
 import { app } from "../../scripts/app.js";
 
 const LIST_URL = "/adb-music-player/audio-files";
+const METADATA_URL = "/adb-music-player/audio-metadata";
 const AUDIO_EXTENSIONS = /\.(aac|flac|m4a|mp3|oga|ogg|opus|wav)$/i;
 const LIST_HEIGHT = 180;
 const LIST_CHROME_HEIGHT = 40;
 
 function audioUrl(path) {
     return `/adb-music-player/audio-file?path=${encodeURIComponent(path)}`;
+}
+
+function downloadUrl(path) {
+    return `/adb-music-player/audio-download?path=${encodeURIComponent(path)}`;
+}
+
+function tintedColor(color) {
+    if (!/^#[0-9a-f]{6}$/i.test(color || "")) {
+        return "";
+    }
+    return `${color}33`;
 }
 
 app.registerExtension({
@@ -129,14 +141,48 @@ app.registerExtension({
             status.textContent = `${files.length} audio file${files.length === 1 ? "" : "s"}`;
             for (const [index, file] of files.entries()) {
                 const row = document.createElement("div");
-                row.style.cssText = `box-sizing:border-box;display:flex;align-items:center;gap:6px;min-height:26px;padding:2px 4px;background:${index % 2 === 0 ? "rgba(128,128,128,0.16)" : "transparent"}`;
+                row.style.cssText = `box-sizing:border-box;display:flex;align-items:center;gap:6px;min-height:26px;padding:2px 4px;background:${tintedColor(file.color) || (index % 2 === 0 ? "rgba(128,128,128,0.16)" : "transparent")}`;
+
+                const colorPicker = document.createElement("input");
+                colorPicker.type = "color";
+                colorPicker.value = /^#[0-9a-f]{6}$/i.test(file.color || "") ? file.color : "#808080";
+                colorPicker.tabIndex = -1;
+                colorPicker.style.cssText = "position:absolute;opacity:0;pointer-events:none;width:1px;height:1px";
+
+                const colorButton = document.createElement("button");
+                colorButton.type = "button";
+                colorButton.title = `Set color for ${file.name}`;
+                colorButton.style.cssText = `background:${file.color || "transparent"};border:2px solid ${file.color || "var(--descrip-text)"};border-radius:50%;cursor:pointer;flex:0 0 14px;height:14px;padding:0;width:14px`;
+                colorButton.addEventListener("click", () => colorPicker.click());
+                colorPicker.addEventListener("input", async () => {
+                    file.color = colorPicker.value;
+                    row.style.background = tintedColor(file.color);
+                    colorButton.style.background = file.color;
+                    colorButton.style.borderColor = file.color;
+                    try {
+                        await fetch(`${METADATA_URL}?path=${encodeURIComponent(file.path)}`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ color: file.color }),
+                        });
+                    } catch (error) {
+                        status.textContent = "Could not save file color";
+                        console.error("ADB Music Player: failed to save file color", error);
+                    }
+                });
 
                 const label = document.createElement("a");
-                label.href = audioUrl(file.path);
+                label.href = downloadUrl(file.path);
                 label.download = file.name;
                 label.textContent = file.name;
                 label.title = file.name;
-                label.style.cssText = "color:var(--fg-color);cursor:pointer;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px";
+                label.style.cssText = `color:var(--fg-color);cursor:pointer;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;text-decoration:${file.downloaded ? "underline" : "none"}`;
+                label.addEventListener("mouseenter", () => { if (!file.downloaded) label.style.textDecoration = "underline"; });
+                label.addEventListener("mouseleave", () => { if (!file.downloaded) label.style.textDecoration = "none"; });
+                label.addEventListener("click", () => {
+                    file.downloaded = true;
+                    label.style.textDecoration = "underline";
+                });
 
                 const playback = document.createElement("div");
                 playback.style.cssText = "display:flex;flex:0 1 345px;flex-direction:column;gap:1px;min-width:70px";
@@ -174,7 +220,7 @@ app.registerExtension({
                 playButton.style.cssText = "cursor:pointer;flex:0 0 30px;padding:2px 5px";
                 playButton.addEventListener("click", () => playFile(file, playButton, progress, timeLabel, durationLabel));
 
-                row.append(label, playback, playButton);
+                row.append(colorButton, colorPicker, label, playback, playButton);
                 list.append(row);
             }
             resizeNode();
