@@ -3,6 +3,12 @@ import { app } from "../../scripts/app.js";
 const LIST_URL = "/adb-music-player/audio-files";
 const METADATA_URL = "/adb-music-player/audio-metadata";
 const AUDIO_EXTENSIONS = /\.(aac|flac|m4a|mp3|oga|ogg|opus|wav)$/i;
+const COLOR_PALETTE = [
+    "#5b5b5b", "#a6a6a6", "#d94f4f", "#e58f2a",
+    "#d6b52c", "#66a34a", "#39a89e", "#3b9fc4",
+    "#4f78c4", "#6d5acb", "#a052b5", "#d45d9a",
+    "#c87954", "#8d6e63", "#78909c", "#f0f0f0",
+];
 const LIST_HEIGHT = 180;
 const LIST_CHROME_HEIGHT = 40;
 
@@ -15,7 +21,7 @@ function downloadUrl(path) {
 }
 
 function tintedColor(color) {
-    if (!/^#[0-9a-f]{6}$/i.test(color || "")) {
+    if (!COLOR_PALETTE.includes(color)) {
         return "";
     }
     return `${color}33`;
@@ -63,6 +69,7 @@ app.registerExtension({
         let currentProgress;
         let currentTimeLabel;
         let currentDurationLabel;
+        let pendingSeekFraction;
 
         function formatTime(seconds) {
             if (!Number.isFinite(seconds) || seconds < 0) {
@@ -103,16 +110,18 @@ app.registerExtension({
                 currentTimeLabel = undefined;
                 currentDurationLabel = undefined;
             }
+            pendingSeekFraction = undefined;
             audio.pause();
         }
 
-        function playFile(file, button, progress, timeLabel, durationLabel) {
+        function playFile(file, button, progress, timeLabel, durationLabel, startFraction) {
             if (currentButton === button && !audio.paused) {
                 stopCurrent();
                 return;
             }
 
             stopCurrent();
+            pendingSeekFraction = Number.isFinite(startFraction) ? startFraction : undefined;
             audio.src = audioUrl(file.path);
             audio.play().then(() => {
                 currentButton = button;
@@ -120,6 +129,10 @@ app.registerExtension({
                 currentTimeLabel = timeLabel;
                 currentDurationLabel = durationLabel;
                 button.textContent = "Ⅱ";
+                if (pendingSeekFraction !== undefined && Number.isFinite(audio.duration)) {
+                    audio.currentTime = pendingSeekFraction * audio.duration;
+                    pendingSeekFraction = undefined;
+                }
                 updateProgress();
             }).catch(() => {
                 status.textContent = "Unable to play file";
@@ -128,7 +141,13 @@ app.registerExtension({
 
         audio.addEventListener("ended", stopCurrent);
         audio.addEventListener("timeupdate", updateProgress);
-        audio.addEventListener("loadedmetadata", updateProgress);
+        audio.addEventListener("loadedmetadata", () => {
+            if (pendingSeekFraction !== undefined && currentProgress && Number.isFinite(audio.duration)) {
+                audio.currentTime = pendingSeekFraction * audio.duration;
+                pendingSeekFraction = undefined;
+            }
+            updateProgress();
+        });
 
         function render(files) {
             list.replaceChildren();
@@ -139,37 +158,59 @@ app.registerExtension({
             }
 
             status.textContent = `${files.length} audio file${files.length === 1 ? "" : "s"}`;
+            let openPalette;
             for (const [index, file] of files.entries()) {
                 const row = document.createElement("div");
-                row.style.cssText = `box-sizing:border-box;display:flex;align-items:center;gap:6px;min-height:26px;padding:2px 4px;background:${tintedColor(file.color) || (index % 2 === 0 ? "rgba(128,128,128,0.16)" : "transparent")}`;
-
-                const colorPicker = document.createElement("input");
-                colorPicker.type = "color";
-                colorPicker.value = /^#[0-9a-f]{6}$/i.test(file.color || "") ? file.color : "#808080";
-                colorPicker.tabIndex = -1;
-                colorPicker.style.cssText = "position:absolute;opacity:0;pointer-events:none;width:1px;height:1px";
+                row.style.cssText = `box-sizing:border-box;display:flex;align-items:center;gap:6px;min-height:26px;padding:2px 4px;position:relative;background:${tintedColor(file.color) || (index % 2 === 0 ? "rgba(128,128,128,0.16)" : "transparent")}`;
 
                 const colorButton = document.createElement("button");
                 colorButton.type = "button";
                 colorButton.title = `Set color for ${file.name}`;
-                colorButton.style.cssText = `background:${file.color || "transparent"};border:2px solid ${file.color || "var(--descrip-text)"};border-radius:50%;cursor:pointer;flex:0 0 14px;height:14px;padding:0;width:14px`;
-                colorButton.addEventListener("click", () => colorPicker.click());
-                colorPicker.addEventListener("input", async () => {
-                    file.color = colorPicker.value;
-                    row.style.background = tintedColor(file.color);
-                    colorButton.style.background = file.color;
-                    colorButton.style.borderColor = file.color;
-                    try {
-                        await fetch(`${METADATA_URL}?path=${encodeURIComponent(file.path)}`, {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ color: file.color }),
-                        });
-                    } catch (error) {
-                        status.textContent = "Could not save file color";
-                        console.error("ADB Music Player: failed to save file color", error);
+                colorButton.setAttribute("aria-label", `Set color for ${file.name}`);
+                colorButton.style.cssText = `background:${COLOR_PALETTE.includes(file.color) ? file.color : "transparent"};border:2px solid ${COLOR_PALETTE.includes(file.color) ? file.color : "var(--descrip-text)"};border-radius:50%;cursor:pointer;flex:0 0 14px;height:14px;padding:0;width:14px`;
+
+                const palette = document.createElement("div");
+                palette.style.cssText = "background:var(--comfy-menu-bg);border:1px solid var(--border-color);box-shadow:0 3px 8px rgba(0,0,0,0.35);display:none;grid-template-columns:repeat(4,18px);gap:5px;padding:6px;position:absolute;left:2px;top:22px;z-index:2";
+                for (const color of COLOR_PALETTE) {
+                    const swatch = document.createElement("button");
+                    swatch.type = "button";
+                    swatch.title = color;
+                    swatch.setAttribute("aria-label", color);
+                    swatch.style.cssText = `background:${color};border:${file.color === color ? "2px solid var(--fg-color)" : "1px solid rgba(255,255,255,0.5)"};border-radius:50%;cursor:pointer;height:18px;padding:0;width:18px`;
+                    swatch.addEventListener("click", async () => {
+                        file.color = color;
+                        palette.style.display = "none";
+                        openPalette = undefined;
+                        row.style.background = tintedColor(file.color);
+                        colorButton.style.background = file.color;
+                        colorButton.style.borderColor = file.color;
+                        try {
+                            const response = await fetch(`${METADATA_URL}?path=${encodeURIComponent(file.path)}`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ color: file.color }),
+                            });
+                            if (!response.ok) {
+                                throw new Error(`HTTP ${response.status}`);
+                            }
+                        } catch (error) {
+                            status.textContent = "Could not save file color";
+                            console.error("ADB Music Player: failed to save file color", error);
+                        }
+                    });
+                    palette.append(swatch);
+                }
+
+                colorButton.addEventListener("click", (event) => {
+                    event.stopPropagation();
+                    if (openPalette && openPalette !== palette) {
+                        openPalette.style.display = "none";
                     }
+                    const isOpening = palette.style.display === "none";
+                    palette.style.display = isOpening ? "grid" : "none";
+                    openPalette = isOpening ? palette : undefined;
                 });
+                row.append(colorButton, palette);
 
                 const label = document.createElement("a");
                 label.href = downloadUrl(file.path);
@@ -212,6 +253,16 @@ app.registerExtension({
                         updateProgress();
                     }
                 });
+                progress.addEventListener("click", (event) => {
+                    if (currentProgress === progress) {
+                        return;
+                    }
+                    const bounds = progress.getBoundingClientRect();
+                    const fraction = bounds.width > 0
+                        ? Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width))
+                        : 0;
+                    playFile(file, playButton, progress, timeLabel, durationLabel, fraction);
+                });
 
                 const playButton = document.createElement("button");
                 playButton.type = "button";
@@ -220,7 +271,7 @@ app.registerExtension({
                 playButton.style.cssText = "cursor:pointer;flex:0 0 30px;padding:2px 5px";
                 playButton.addEventListener("click", () => playFile(file, playButton, progress, timeLabel, durationLabel));
 
-                row.append(colorButton, colorPicker, label, playback, playButton);
+                row.append(label, playback, playButton);
                 list.append(row);
             }
             resizeNode();
