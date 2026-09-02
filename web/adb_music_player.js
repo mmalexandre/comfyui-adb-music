@@ -48,6 +48,30 @@ app.registerExtension({
 
         const audio = new Audio();
         let currentButton;
+        let currentProgress;
+        let currentTimeLabel;
+        let currentDurationLabel;
+
+        function formatTime(seconds) {
+            if (!Number.isFinite(seconds) || seconds < 0) {
+                return "0:00";
+            }
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60).toString().padStart(2, "0");
+            return `${minutes}:${remainingSeconds}`;
+        }
+
+        function updateProgress() {
+            if (!currentProgress) {
+                return;
+            }
+            if (Number.isFinite(audio.duration)) {
+                currentProgress.max = audio.duration;
+            }
+            currentProgress.value = audio.currentTime;
+            currentTimeLabel.textContent = formatTime(audio.currentTime);
+            currentDurationLabel.textContent = formatTime(audio.duration);
+        }
 
         function resizeNode() {
             const width = Math.max(node.size[0], 240);
@@ -59,10 +83,18 @@ app.registerExtension({
                 currentButton.textContent = "▶";
                 currentButton = undefined;
             }
+            if (currentProgress) {
+                currentProgress.value = 0;
+                currentTimeLabel.textContent = "0:00";
+                currentDurationLabel.textContent = "0:00";
+                currentProgress = undefined;
+                currentTimeLabel = undefined;
+                currentDurationLabel = undefined;
+            }
             audio.pause();
         }
 
-        function playFile(file, button) {
+        function playFile(file, button, progress, timeLabel, durationLabel) {
             if (currentButton === button && !audio.paused) {
                 stopCurrent();
                 return;
@@ -72,13 +104,19 @@ app.registerExtension({
             audio.src = audioUrl(file.path);
             audio.play().then(() => {
                 currentButton = button;
+                currentProgress = progress;
+                currentTimeLabel = timeLabel;
+                currentDurationLabel = durationLabel;
                 button.textContent = "Ⅱ";
+                updateProgress();
             }).catch(() => {
                 status.textContent = "Unable to play file";
             });
         }
 
         audio.addEventListener("ended", stopCurrent);
+        audio.addEventListener("timeupdate", updateProgress);
+        audio.addEventListener("loadedmetadata", updateProgress);
 
         function render(files) {
             list.replaceChildren();
@@ -98,14 +136,43 @@ app.registerExtension({
                 label.title = file.name;
                 label.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px";
 
+                const playback = document.createElement("div");
+                playback.style.cssText = "display:flex;flex:0 1 345px;flex-direction:column;gap:1px;min-width:70px";
+
+                const progress = document.createElement("input");
+                progress.type = "range";
+                progress.min = "0";
+                progress.max = "0";
+                progress.step = "0.1";
+                progress.value = "0";
+                progress.title = `Seek ${file.name}`;
+                progress.style.cssText = "box-sizing:border-box;cursor:pointer;height:12px;margin:0;width:100%";
+
+                const timeRow = document.createElement("div");
+                timeRow.style.cssText = "display:flex;justify-content:space-between;color:var(--descrip-text);font-size:9px;line-height:10px";
+
+                const timeLabel = document.createElement("span");
+                timeLabel.textContent = "0:00";
+                const durationLabel = document.createElement("span");
+                durationLabel.textContent = "0:00";
+                timeRow.append(timeLabel, durationLabel);
+                playback.append(progress, timeRow);
+
+                progress.addEventListener("input", () => {
+                    if (currentProgress === progress && Number.isFinite(audio.duration)) {
+                        audio.currentTime = Number(progress.value);
+                        updateProgress();
+                    }
+                });
+
                 const playButton = document.createElement("button");
                 playButton.type = "button";
                 playButton.textContent = "▶";
                 playButton.title = `Play ${file.name}`;
                 playButton.style.cssText = "cursor:pointer;flex:0 0 30px;padding:2px 5px";
-                playButton.addEventListener("click", () => playFile(file, playButton));
+                playButton.addEventListener("click", () => playFile(file, playButton, progress, timeLabel, durationLabel));
 
-                row.append(label, playButton);
+                row.append(label, playback, playButton);
                 list.append(row);
             }
             resizeNode();
