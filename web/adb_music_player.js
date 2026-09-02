@@ -110,6 +110,7 @@ app.registerExtension({
         }
 
         let refreshInProgress = false;
+        let lastFilesSignature;
 
         async function refresh() {
             if (refreshInProgress) {
@@ -118,16 +119,20 @@ app.registerExtension({
 
             refreshInProgress = true;
             refreshButton.disabled = true;
-            status.textContent = "Loading audio files...";
             try {
                 const directory = node.widgets.find((item) => item.name === "directory")?.value || "audio";
                 const response = await fetch(`${LIST_URL}?directory=${encodeURIComponent(directory)}`, { cache: "no-store" });
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
                 }
-                const files = await response.json();
-                render(files.filter((file) => AUDIO_EXTENSIONS.test(file.name)));
+                const files = (await response.json()).filter((file) => AUDIO_EXTENSIONS.test(file.name));
+                const filesSignature = JSON.stringify(files);
+                if (filesSignature !== lastFilesSignature) {
+                    lastFilesSignature = filesSignature;
+                    render(files);
+                }
             } catch (error) {
+                lastFilesSignature = undefined;
                 list.replaceChildren();
                 status.textContent = "Could not load audio files";
                 resizeNode();
