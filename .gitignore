@@ -23,6 +23,7 @@ build/
 .env
 .env.*
 !.env.example
+upload_to_comfyui.sh
 
 # Editor and OS files
 .vscode/
