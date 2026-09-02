@@ -2,6 +2,7 @@ import { app } from "../../scripts/app.js";
 
 const LIST_URL = "/adb-music-player/audio-files";
 const AUDIO_EXTENSIONS = /\.(aac|flac|m4a|mp3|oga|ogg|opus|wav)$/i;
+const LIST_HEIGHT = 180;
 
 function audioUrl(path) {
     return `/adb-music-player/audio-file?path=${encodeURIComponent(path)}`;
@@ -41,7 +42,7 @@ app.registerExtension({
         container.append(header);
 
         const list = document.createElement("div");
-        list.style.cssText = "display:flex;flex-direction:column;gap:3px;max-height:180px;overflow-y:auto";
+        list.style.cssText = `box-sizing:border-box;display:flex;flex-direction:column;gap:2px;height:${LIST_HEIGHT}px;min-height:0;overflow-y:auto;padding:2px 0`;
         container.append(list);
 
         const audio = new Audio();
@@ -87,9 +88,9 @@ app.registerExtension({
             }
 
             status.textContent = `${files.length} audio file${files.length === 1 ? "" : "s"}`;
-            for (const file of files) {
+            for (const [index, file] of files.entries()) {
                 const row = document.createElement("div");
-                row.style.cssText = "display:flex;align-items:center;gap:6px;min-height:26px";
+                row.style.cssText = `box-sizing:border-box;display:flex;align-items:center;gap:6px;min-height:26px;padding:2px 4px;background:${index % 2 === 0 ? "rgba(128,128,128,0.16)" : "transparent"}`;
 
                 const label = document.createElement("span");
                 label.textContent = file.name;
@@ -158,7 +159,7 @@ app.registerExtension({
             serialize: false,
             hideOnZoom: true,
         });
-        widget.computeSize = () => [node.size[0], Math.max(32, container.scrollHeight + 8)];
+        widget.computeSize = () => [node.size[0], LIST_HEIGHT + 40];
         await refresh();
     },
 });
