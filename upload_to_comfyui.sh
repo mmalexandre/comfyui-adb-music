@@ -12,8 +12,11 @@ REMOTE_RESTART_COMMAND="${REMOTE_RESTART_COMMAND:-pkill -TERM -f '(^|/)[.]venv-c
 SSH=(ssh -p "$REMOTE_PORT" -i "$SSH_KEY")
 
 "${SSH[@]}" "$REMOTE_HOST" "mkdir -p '$REMOTE_NODE_DIR'"
-tar -C "$SCRIPT_DIR" -cf - __init__.py adb_music_player.py |
-  "${SSH[@]}" "$REMOTE_HOST" "tar --no-same-owner -C '$REMOTE_NODE_DIR' -xf -"
+rsync -av --no-owner --no-group -e "ssh -p $REMOTE_PORT -i $SSH_KEY" \
+  "$SCRIPT_DIR/__init__.py" \
+  "$SCRIPT_DIR/adb_music_player.py" \
+  "$SCRIPT_DIR/web" \
+  "$REMOTE_HOST:$REMOTE_NODE_DIR/"
 
 printf 'Uploaded ComfyUI node to %s:%s\n' "$REMOTE_HOST" "$REMOTE_NODE_DIR"
 "${SSH[@]}" "$REMOTE_HOST" "$REMOTE_RESTART_COMMAND"
