@@ -3,6 +3,7 @@ import { app } from "../../scripts/app.js";
 const LIST_URL = "/adb-music-player/audio-files";
 const AUDIO_EXTENSIONS = /\.(aac|flac|m4a|mp3|oga|ogg|opus|wav)$/i;
 const LIST_HEIGHT = 180;
+const LIST_CHROME_HEIGHT = 40;
 
 function audioUrl(path) {
     return `/adb-music-player/audio-file?path=${encodeURIComponent(path)}`;
@@ -50,7 +51,7 @@ app.registerExtension({
 
         function resizeNode() {
             const width = Math.max(node.size[0], 240);
-            node.setSize([width, node.computeSize()[1]]);
+            node.setSize([width, Math.max(node.size[1], node.computeSize()[1])]);
         }
 
         function stopCurrent() {
@@ -159,7 +160,16 @@ app.registerExtension({
             serialize: false,
             hideOnZoom: true,
         });
-        widget.computeSize = () => [node.size[0], LIST_HEIGHT + 40];
+        let listHeight = LIST_HEIGHT;
+        widget.computeSize = () => [node.size[0], listHeight + LIST_CHROME_HEIGHT];
+        const minimumNodeHeight = node.computeSize()[1];
+        const originalOnResize = node.onResize;
+        node.onResize = (size) => {
+            originalOnResize?.(size);
+            size[1] = Math.max(size[1], minimumNodeHeight);
+            listHeight = LIST_HEIGHT + Math.max(0, size[1] - minimumNodeHeight);
+            list.style.height = `${listHeight}px`;
+        };
         await refresh();
     },
 });
