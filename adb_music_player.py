@@ -73,6 +73,14 @@ class ADBMusicPlayer:
         with open(output_path, "wb") as output_file:
             output_file.write(output_buffer.getvalue())
 
+    @staticmethod
+    def _save_workflow(workflow, audio_path):
+        if workflow is None:
+            return
+        workflow_path = f"{audio_path}.workflow.json"
+        with open(workflow_path, "w", encoding="utf-8") as workflow_file:
+            json.dump(workflow, workflow_file, indent=2)
+
     def save_audio(self, audio, filename_prefix, format, quality, prompt=None, extra_pnginfo=None):
         if audio is None:
             raise ValueError("ADBMusicPlayer: input audio is None.")
@@ -87,13 +95,16 @@ class ADBMusicPlayer:
             metadata["prompt"] = json.dumps(prompt)
         if extra_pnginfo is not None:
             metadata.update({key: json.dumps(value) for key, value in extra_pnginfo.items()})
+        workflow = extra_pnginfo.get("workflow") if extra_pnginfo else None
 
         results = []
         sample_rate = audio["sample_rate"]
         for batch_number, waveform in enumerate(audio["waveform"].cpu()):
             batch_filename = filename.replace("%batch_num%", str(batch_number))
             file = f"{batch_filename}_{counter:05}.{format}"
-            self._save_waveform(waveform, sample_rate, os.path.join(output_directory, file), format, quality, metadata)
+            audio_path = os.path.join(output_directory, file)
+            self._save_waveform(waveform, sample_rate, audio_path, format, quality, metadata)
+            self._save_workflow(workflow, audio_path)
             results.append({"filename": file, "subfolder": subfolder, "type": "output"})
             counter += 1
 
