@@ -17,8 +17,12 @@ COLOR_PALETTE = {
 
 
 def resolve_audio_directory(directory):
+    directory = directory.replace("\\", "/")
     if os.path.isabs(directory):
         return os.path.abspath(directory)
+    directory = directory.strip("/")
+    if directory == "audio" or directory.startswith("audio/"):
+        directory = os.path.join("output", directory)
     return os.path.abspath(os.path.join(folder_paths.base_path, directory))
 
 

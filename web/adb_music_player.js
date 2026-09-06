@@ -371,7 +371,11 @@ app.registerExtension({
             try {
                 const filenamePrefix = node.widgets.find((item) => item.name === "filename_prefix")?.value || "audio/ComfyUI";
                 const separatorIndex = Math.max(filenamePrefix.lastIndexOf("/"), filenamePrefix.lastIndexOf("\\"));
-                const directory = separatorIndex >= 0 ? filenamePrefix.slice(0, separatorIndex) : "output/audio";
+                let directory = separatorIndex >= 0 ? filenamePrefix.slice(0, separatorIndex) : "output/audio";
+                directory = directory.replaceAll("\\", "/");
+                if (directory === "audio" || directory.startsWith("audio/")) {
+                    directory = `output/${directory}`;
+                }
                 const response = await fetch(`${LIST_URL}?directory=${encodeURIComponent(directory)}`, { cache: "no-store" });
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
