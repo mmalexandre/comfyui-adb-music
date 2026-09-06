@@ -2,7 +2,7 @@
 
 A small [ComfyUI](https://github.com/comfyanonymous/ComfyUI) custom node named **ADB Music Player**.
 
-The node accepts an `AUDIO` input and saves it using ComfyUI's output naming convention. The filename prefix defaults to `audio/ComfyUI`, producing files such as `ComfyUI/output/audio/ComfyUI_00001.wav`. Choose `wav`, `mp3`, or `opus`; the quality dropdown supports the MP3 V0/bitrate and Opus bitrate options. The audio is also passed through as the node output.
+The node accepts an `AUDIO` input and saves it using ComfyUI's output naming convention. The filename prefix defaults to `audio/ComfyUI`, producing files such as `ComfyUI/output/audio/ComfyUI_00001.flac`. Entering `audio` as the filename prefix is shorthand for the same `output/audio` directory. Choose `flac`, `mp3`, or `opus`; the quality dropdown supports the MP3 V0/bitrate and Opus bitrate options. The audio is also passed through as the node output.
 When ComfyUI provides the workflow, it is saved next to each audio file as `<audio-file>.workflow.json`, such as `myaudio.opus.workflow.json`.
 
 The editor lists audio files recursively under the directory from the filename prefix. Use the refresh control after saving a new file, then use a row's play button to listen to it. Each row has a 16-color control, and clicking a filename downloads it and records that it was downloaded.

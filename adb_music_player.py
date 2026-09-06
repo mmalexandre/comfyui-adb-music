@@ -13,7 +13,7 @@ class ADBMusicPlayer:
             "required": {
                 "audio": ("AUDIO",),
                 "filename_prefix": ("STRING", {"default": "audio/ComfyUI"}),
-                "format": (["wav", "mp3", "opus"], {"default": "wav"}),
+                "format": (["flac", "mp3", "opus"], {"default": "flac"}),
                 "quality": (["V0", "64k", "96k", "128k", "192k", "320k"], {"default": "128k"}),
             },
             "hidden": {
@@ -58,7 +58,7 @@ class ADBMusicPlayer:
         with av.open(output_buffer, mode="w", format=format) as container:
             for key, value in metadata.items():
                 container.metadata[key] = value
-            codec = "pcm_s16le" if format == "wav" else ("libmp3lame" if format == "mp3" else "libopus")
+            codec = "flac" if format == "flac" else ("libmp3lame" if format == "mp3" else "libopus")
             stream = container.add_stream(codec, rate=sample_rate, layout=layout)
             ADBMusicPlayer._set_quality(stream, format, quality)
             frame = av.AudioFrame.from_ndarray(
@@ -84,8 +84,11 @@ class ADBMusicPlayer:
     def save_audio(self, audio, filename_prefix, format, quality, prompt=None, extra_pnginfo=None):
         if audio is None:
             raise ValueError("ADBMusicPlayer: input audio is None.")
-        if format not in {"wav", "mp3", "opus"}:
+        if format not in {"flac", "mp3", "opus"}:
             raise ValueError(f"Unsupported audio format: {format!r}")
+
+        if filename_prefix.strip().rstrip("/\\") == "audio":
+            filename_prefix = "audio/ComfyUI"
 
         output_directory, filename, counter, subfolder, _ = folder_paths.get_save_image_path(
             filename_prefix, folder_paths.get_output_directory()
