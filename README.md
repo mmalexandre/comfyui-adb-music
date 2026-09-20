@@ -7,6 +7,12 @@ When ComfyUI provides the workflow, it is saved next to each audio file as `<aud
 
 The editor lists audio files recursively under the directory from the filename prefix. Use the refresh control after saving a new file, then use a row's play button to listen to it. Each row has a 16-color control, and clicking a filename downloads it and records that it was downloaded.
 
+Adb Studio can upload an editable workflow to
+`POST /adb-music-player/workflow`. The plugin stores it as
+`output/audio/adbstudio-temp-workflow.json`. Opening ComfyUI with
+`?adb-music-player=open-workflow` loads that file into the editor; the user can
+then use ComfyUI's Save workflow action to choose a permanent filename.
+
 Audio colors and download state are persisted in a sidecar file next to each audio file, named `<audio-file>.adb-music-player.json`. These metadata files are ignored by the audio list.
 Each sidecar also stores the audio file's modification time and size; metadata is discarded automatically when the audio file changes.
 

@@ -2,6 +2,7 @@ import { app } from "../../scripts/app.js";
 
 const LIST_URL = "/adb-music-player/audio-files";
 const METADATA_URL = "/adb-music-player/audio-metadata";
+const WORKFLOW_URL = "/adb-music-player/workflow";
 const AUDIO_EXTENSIONS = /\.(aac|flac|m4a|mp3|oga|ogg|opus|wav)$/i;
 const COLOR_PALETTE = [
     "#5b5b5b", "#a6a6a6", "#d94f4f", "#e58f2a",
@@ -77,6 +78,14 @@ function tintedColor(color) {
 
 app.registerExtension({
     name: "ADB.MusicPlayer",
+
+    setup() {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("adb-music-player") !== "open-workflow") {
+            return;
+        }
+        setTimeout(() => loadAdbStudioWorkflow(), 1000);
+    },
 
     async nodeCreated(node) {
         if (node.comfyClass !== "ADBMusicPlayer") {
@@ -430,3 +439,21 @@ app.registerExtension({
         await refresh();
     },
 });
+
+async function loadAdbStudioWorkflow(attempt = 0) {
+    try {
+        const response = await fetch(WORKFLOW_URL);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const workflow = await response.json();
+        await app.loadGraphData(workflow);
+        window.history.replaceState({}, document.title, window.location.pathname);
+    } catch (error) {
+        if (String(error).includes("canvas is null") && attempt < 20) {
+            setTimeout(() => loadAdbStudioWorkflow(attempt + 1), 500);
+            return;
+        }
+        console.error("Unable to open Adb Studio workflow", error);
+    }
+}

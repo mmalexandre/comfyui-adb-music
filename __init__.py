@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import tempfile
 
@@ -14,6 +15,11 @@ COLOR_PALETTE = {
     "#4f78c4", "#6d5acb", "#a052b5", "#d45d9a",
     "#c87954", "#8d6e63", "#78909c", "#f0f0f0",
 }
+TEMP_WORKFLOW_FILENAME = "adbstudio-temp-workflow.json"
+
+
+def temporary_workflow_path():
+    return os.path.join(folder_paths.get_output_directory(), "audio", TEMP_WORKFLOW_FILENAME)
 
 
 def resolve_audio_directory(directory):
@@ -36,6 +42,14 @@ def audio_identity(audio_path):
         "file_mtime_ns": audio_stat.st_mtime_ns,
         "file_size": audio_stat.st_size,
     }
+
+
+def audio_checksum(audio_path):
+    digest = hashlib.sha256()
+    with open(audio_path, "rb") as audio_file:
+        for chunk in iter(lambda: audio_file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def read_metadata(audio_path):
@@ -84,15 +98,67 @@ async def list_audio_files(request):
                 path = os.path.join(directory, filename)
                 relative_path = os.path.relpath(path, audio_directory)
                 metadata = read_metadata(path)
-                files.append((os.stat(path).st_mtime_ns, {
+                checksum = metadata.get("checksum")
+                if not isinstance(checksum, str) or not checksum:
+                    checksum = audio_checksum(path)
+                    metadata["checksum"] = checksum
+                    write_metadata(path, metadata)
+                modified = os.stat(path).st_mtime_ns
+                files.append((modified, {
                     "name": relative_path.replace(os.path.sep, "/"),
                     "path": path,
+                    "modified": modified,
+                    "checksum": checksum,
                     "color": metadata.get("color") if metadata.get("color") in COLOR_PALETTE else None,
                     "downloaded": bool(metadata.get("downloaded", False)),
                 }))
 
-    files.sort(key=lambda item: item[0], reverse=True)
+    files.sort(key=lambda item: item[0])
     return web.json_response([file for _, file in files])
+
+
+@PromptServer.instance.routes.post("/adb-music-player/workflow")
+async def upload_workflow(request):
+    try:
+        workflow = await request.json()
+    except (json.JSONDecodeError, TypeError):
+        raise web.HTTPBadRequest(text="Invalid workflow JSON")
+    if not isinstance(workflow, dict):
+        raise web.HTTPBadRequest(text="Workflow must be a JSON object")
+
+    workflow_path = temporary_workflow_path()
+    os.makedirs(os.path.dirname(workflow_path), exist_ok=True)
+    file_descriptor, temporary_path = tempfile.mkstemp(
+        dir=os.path.dirname(workflow_path), prefix=".adb-workflow-", text=True
+    )
+    try:
+        with os.fdopen(file_descriptor, "w", encoding="utf-8") as workflow_file:
+            file_descriptor = None
+            json.dump(workflow, workflow_file, indent=2)
+            workflow_file.write("\n")
+        os.replace(temporary_path, workflow_path)
+    except Exception:
+        if file_descriptor is not None:
+            os.close(file_descriptor)
+        try:
+            os.unlink(temporary_path)
+        except OSError:
+            pass
+        raise
+    return web.json_response({"filename": TEMP_WORKFLOW_FILENAME})
+
+
+@PromptServer.instance.routes.get("/adb-music-player/workflow")
+async def get_workflow(request):
+    workflow_path = temporary_workflow_path()
+    if not os.path.isfile(workflow_path):
+        raise web.HTTPNotFound()
+    try:
+        with open(workflow_path, encoding="utf-8") as workflow_file:
+            workflow = json.load(workflow_file)
+    except (OSError, json.JSONDecodeError):
+        raise web.HTTPInternalServerError(text="Stored workflow is invalid")
+    return web.json_response(workflow)
 
 
 @PromptServer.instance.routes.post("/adb-music-player/audio-metadata")
