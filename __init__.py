@@ -16,6 +16,8 @@ COLOR_PALETTE = {
     "#c87954", "#8d6e63", "#78909c", "#f0f0f0",
 }
 TEMP_WORKFLOW_FILENAME = "adbstudio-temp-workflow.json"
+REFERENCE_AUDIO_DIRECTORY = os.path.join("adb-studio", "reference-audio")
+REFERENCE_AUDIO_EXTENSIONS = {".aac", ".aiff", ".flac", ".m4a", ".mp3", ".oga", ".ogg", ".opus", ".wav"}
 
 
 def temporary_workflow_path():
@@ -50,6 +52,20 @@ def audio_checksum(audio_path):
         for chunk in iter(lambda: audio_file.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def reference_audio_path(checksum, extension):
+    return os.path.join(
+        folder_paths.get_input_directory(),
+        REFERENCE_AUDIO_DIRECTORY,
+        f"{checksum}{extension}",
+    )
+
+
+def valid_checksum(value):
+    return isinstance(value, str) and len(value) == 64 and all(
+        character in "0123456789abcdefABCDEF" for character in value
+    )
 
 
 def read_metadata(audio_path):
@@ -146,6 +162,87 @@ async def upload_workflow(request):
             pass
         raise
     return web.json_response({"filename": TEMP_WORKFLOW_FILENAME})
+
+
+@PromptServer.instance.routes.post("/adb-music-player/reference-audio/ensure")
+async def ensure_reference_audio(request):
+    reader = await request.multipart()
+    fields = {}
+    temporary_path = None
+    try:
+        while True:
+            field = await reader.next()
+            if field is None:
+                break
+            if field.name == "file":
+                if temporary_path is not None:
+                    raise web.HTTPBadRequest(text="Only one reference audio file is allowed")
+                os.makedirs(folder_paths.get_input_directory(), exist_ok=True)
+                file_descriptor, temporary_path = tempfile.mkstemp(
+                    dir=folder_paths.get_input_directory(), prefix=".adb-reference-"
+                )
+                with os.fdopen(file_descriptor, "wb") as output_file:
+                    while True:
+                        chunk = await field.read_chunk()
+                        if not chunk:
+                            break
+                        output_file.write(chunk)
+            else:
+                fields[field.name] = await field.text()
+
+        raw_filename = fields.get("filename", "")
+        filename = os.path.basename(raw_filename)
+        checksum = fields.get("checksum", "").lower()
+        extension = os.path.splitext(filename)[1].lower()
+        if (
+            not filename
+            or filename != raw_filename
+            or "/" in raw_filename
+            or "\\" in raw_filename
+            or extension not in REFERENCE_AUDIO_EXTENSIONS
+        ):
+            raise web.HTTPBadRequest(text="Invalid reference audio filename")
+        if not valid_checksum(checksum):
+            raise web.HTTPBadRequest(text="Invalid reference audio checksum")
+        if temporary_path is None:
+            raise web.HTTPBadRequest(text="Reference audio file is required")
+
+        audio_path = reference_audio_path(checksum, extension)
+        audio_directory = os.path.dirname(audio_path)
+        os.makedirs(audio_directory, exist_ok=True)
+        if not os.path.islink(audio_path) and os.path.isfile(audio_path) and audio_checksum(audio_path) == checksum:
+            os.unlink(temporary_path)
+            temporary_path = None
+            return web.json_response({
+                "filename": os.path.relpath(audio_path, folder_paths.get_input_directory()).replace(os.path.sep, "/"),
+                "checksum": checksum,
+                "status": "exists",
+            })
+
+        if audio_checksum(temporary_path) != checksum:
+            raise web.HTTPBadRequest(text="Reference audio checksum mismatch")
+        os.replace(temporary_path, audio_path)
+        temporary_path = None
+    except web.HTTPException:
+        if temporary_path is not None:
+            try:
+                os.unlink(temporary_path)
+            except OSError:
+                pass
+        raise
+    except Exception:
+        if temporary_path is not None:
+            try:
+                os.unlink(temporary_path)
+            except OSError:
+                pass
+        raise
+
+    return web.json_response({
+        "filename": os.path.relpath(audio_path, folder_paths.get_input_directory()).replace(os.path.sep, "/"),
+        "checksum": checksum,
+        "status": "created",
+    })
 
 
 @PromptServer.instance.routes.get("/adb-music-player/workflow")
