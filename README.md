@@ -13,6 +13,14 @@ Adb Studio can upload an editable workflow to
 `?adb-music-player=open-workflow` loads that file into the editor; the user can
 then use ComfyUI's Save workflow action to choose a permanent filename.
 
+Workflow upload/read and reference-audio upload require a Bearer token. Set
+`ADB_MUSIC_PLAYER_API_TOKEN` in ComfyUI's environment before starting it, then
+send `Authorization: Bearer <token>` with those requests. If the variable is
+unset, the audio list and its playback, download, and color controls remain
+available, but the workflow and reference-audio API endpoints reject requests.
+Audio paths accepted by the plugin are restricted to ComfyUI's `output/`
+directory.
+
 Audio colors and download state are persisted in a sidecar file next to each audio file, named `<audio-file>.adb-music-player.json`. These metadata files are ignored by the audio list.
 Each sidecar also stores the audio file's modification time and size; metadata is discarded automatically when the audio file changes.
 

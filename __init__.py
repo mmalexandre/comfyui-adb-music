@@ -1,5 +1,6 @@
 import json
 import hashlib
+import hmac
 import os
 import tempfile
 
@@ -18,20 +19,62 @@ COLOR_PALETTE = {
 TEMP_WORKFLOW_FILENAME = "adbstudio-temp-workflow.json"
 REFERENCE_AUDIO_DIRECTORY = os.path.join("adb-studio", "reference-audio")
 REFERENCE_AUDIO_EXTENSIONS = {".aac", ".aiff", ".flac", ".m4a", ".mp3", ".oga", ".ogg", ".opus", ".wav"}
+AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".oga", ".flac", ".m4a", ".aac", ".opus"}
+API_TOKEN_ENVIRONMENT_VARIABLE = "ADB_MUSIC_PLAYER_API_TOKEN"
 
 
 def temporary_workflow_path():
     return os.path.join(folder_paths.get_output_directory(), "audio", TEMP_WORKFLOW_FILENAME)
 
 
+def output_directory():
+    return os.path.realpath(folder_paths.get_output_directory())
+
+
+def resolve_output_path(path):
+    path = path.replace("\\", "/")
+    if os.path.isabs(path):
+        candidate = path
+    else:
+        relative_path = path.strip("/")
+        if relative_path == "output":
+            relative_path = ""
+        elif relative_path.startswith("output/"):
+            relative_path = relative_path[len("output/"):]
+        candidate = os.path.join(output_directory(), relative_path)
+
+    resolved_path = os.path.realpath(candidate)
+    output_root = output_directory()
+    try:
+        inside_output = os.path.commonpath((output_root, resolved_path)) == output_root
+    except ValueError:
+        inside_output = False
+    if not inside_output:
+        raise web.HTTPForbidden(text="Path must be inside the ComfyUI output directory")
+    return resolved_path
+
+
 def resolve_audio_directory(directory):
-    directory = directory.replace("\\", "/")
-    if os.path.isabs(directory):
-        return os.path.abspath(directory)
-    directory = directory.strip("/")
-    if directory == "audio" or directory.startswith("audio/"):
-        directory = os.path.join("output", directory)
-    return os.path.abspath(os.path.join(folder_paths.base_path, directory))
+    return resolve_output_path(directory)
+
+
+def resolve_audio_file(path):
+    audio_path = resolve_output_path(path)
+    if not os.path.isfile(audio_path) or os.path.splitext(audio_path)[1].lower() not in AUDIO_EXTENSIONS:
+        raise web.HTTPNotFound()
+    return audio_path
+
+
+def require_api_token(request):
+    configured_token = os.environ.get(API_TOKEN_ENVIRONMENT_VARIABLE, "").strip()
+    authorization = request.headers.get("Authorization", "")
+    scheme, separator, provided_token = authorization.partition(" ")
+    token = provided_token.strip() if separator and scheme.lower() == "bearer" else ""
+    if not configured_token or not hmac.compare_digest(token, configured_token):
+        raise web.HTTPUnauthorized(
+            text=f"Set {API_TOKEN_ENVIRONMENT_VARIABLE} and provide it as a Bearer token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 def metadata_path(audio_path):
@@ -105,14 +148,14 @@ def write_metadata(audio_path, metadata):
 @PromptServer.instance.routes.get("/adb-music-player/audio-files")
 async def list_audio_files(request):
     audio_directory = resolve_audio_directory(request.query.get("directory", "output/audio"))
-    audio_extensions = {".mp3", ".wav", ".ogg", ".oga", ".flac", ".m4a", ".aac", ".opus"}
     files = []
 
     for directory, _, filenames in os.walk(audio_directory):
         for filename in filenames:
-            if os.path.splitext(filename)[1].lower() in audio_extensions:
+            if os.path.splitext(filename)[1].lower() in AUDIO_EXTENSIONS:
                 path = os.path.join(directory, filename)
-                relative_path = os.path.relpath(path, audio_directory)
+                path = resolve_audio_file(path)
+                relative_path = os.path.relpath(path, output_directory())
                 metadata = read_metadata(path)
                 checksum = metadata.get("checksum")
                 if not isinstance(checksum, str) or not checksum:
@@ -122,7 +165,7 @@ async def list_audio_files(request):
                 modified = os.stat(path).st_mtime_ns
                 files.append((modified, {
                     "name": relative_path.replace(os.path.sep, "/"),
-                    "path": path,
+                    "path": relative_path.replace(os.path.sep, "/"),
                     "modified": modified,
                     "checksum": checksum,
                     "color": metadata.get("color") if metadata.get("color") in COLOR_PALETTE else None,
@@ -135,6 +178,7 @@ async def list_audio_files(request):
 
 @PromptServer.instance.routes.post("/adb-music-player/workflow")
 async def upload_workflow(request):
+    require_api_token(request)
     try:
         workflow = await request.json()
     except (json.JSONDecodeError, TypeError):
@@ -166,6 +210,7 @@ async def upload_workflow(request):
 
 @PromptServer.instance.routes.post("/adb-music-player/reference-audio/ensure")
 async def ensure_reference_audio(request):
+    require_api_token(request)
     reader = await request.multipart()
     fields = {}
     temporary_path = None
@@ -247,6 +292,7 @@ async def ensure_reference_audio(request):
 
 @PromptServer.instance.routes.get("/adb-music-player/workflow")
 async def get_workflow(request):
+    require_api_token(request)
     workflow_path = temporary_workflow_path()
     if not os.path.isfile(workflow_path):
         raise web.HTTPNotFound()
@@ -260,9 +306,7 @@ async def get_workflow(request):
 
 @PromptServer.instance.routes.post("/adb-music-player/audio-metadata")
 async def update_audio_metadata(request):
-    path = request.query.get("path", "")
-    if not path or not os.path.isfile(path):
-        raise web.HTTPNotFound()
+    path = resolve_audio_file(request.query.get("path", ""))
 
     try:
         payload = await request.json()
@@ -285,17 +329,13 @@ async def update_audio_metadata(request):
 
 @PromptServer.instance.routes.get("/adb-music-player/audio-file")
 async def serve_audio_file(request):
-    path = request.query.get("path", "")
-    if not path or not os.path.isfile(path):
-        raise web.HTTPNotFound()
+    path = resolve_audio_file(request.query.get("path", ""))
     return web.FileResponse(path)
 
 
 @PromptServer.instance.routes.get("/adb-music-player/audio-download")
 async def download_audio_file(request):
-    path = request.query.get("path", "")
-    if not path or not os.path.isfile(path):
-        raise web.HTTPNotFound()
+    path = resolve_audio_file(request.query.get("path", ""))
     metadata = read_metadata(path)
     metadata["downloaded"] = True
     write_metadata(path, metadata)
