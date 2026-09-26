@@ -21,6 +21,37 @@ available, but the workflow and reference-audio API endpoints reject requests.
 Audio paths accepted by the plugin are restricted to ComfyUI's `output/`
 directory.
 
+### RunPod
+
+For a RunPod ComfyUI template, open the Pod's **Edit Pod** settings and add
+this environment variable:
+
+```text
+ADB_MUSIC_PLAYER_API_TOKEN=your-long-random-token
+```
+
+You can generate a token in the Pod terminal with:
+
+```bash
+openssl rand -hex 32
+```
+
+Save the Pod configuration and restart it so the ComfyUI process receives the
+variable. You can verify it from the Pod terminal with:
+
+```bash
+echo "$ADB_MUSIC_PLAYER_API_TOKEN"
+```
+
+To open an Adb Studio workflow, append the token in the URL hash:
+
+```text
+https://YOUR-RUNPOD-COMFYUI-URL/?adb-music-player=open-workflow#adb-music-player-token=YOUR_TOKEN
+```
+
+The token must be in the URL hash, not the query string. The browser sends it
+to ComfyUI as `Authorization: Bearer YOUR_TOKEN`.
+
 Audio colors and download state are persisted in a sidecar file next to each audio file, named `<audio-file>.adb-music-player.json`. These metadata files are ignored by the audio list.
 Each sidecar also stores the audio file's modification time and size; metadata is discarded automatically when the audio file changes.
 
