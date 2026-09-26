@@ -440,9 +440,22 @@ app.registerExtension({
     },
 });
 
-async function loadAdbStudioWorkflow(attempt = 0) {
+function adbStudioWorkflowToken() {
+    const match = window.location.hash.match(/(?:^#|&)adb-music-player-token=([^&]*)/);
+    if (!match) {
+        return "";
+    }
     try {
-        const response = await fetch(WORKFLOW_URL);
+        return decodeURIComponent(match[1]);
+    } catch (_) {
+        return "";
+    }
+}
+
+async function loadAdbStudioWorkflow(attempt = 0, token = adbStudioWorkflowToken()) {
+    try {
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        const response = await fetch(WORKFLOW_URL, { headers });
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
