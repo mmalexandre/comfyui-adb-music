@@ -88,9 +88,11 @@ function adbStudioWorkflowToken() {
     }
 }
 
+let apiToken = "";
+
 function apiHeaders(contentType) {
     const headers = {};
-    const token = adbStudioWorkflowToken();
+    const token = apiToken || adbStudioWorkflowToken();
     if (token) {
         headers.Authorization = `Bearer ${token}`;
     }
@@ -482,6 +484,7 @@ app.registerExtension({
 });
 
 async function loadAdbStudioWorkflow(attempt = 0, token = adbStudioWorkflowToken()) {
+    apiToken = token;
     try {
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
         const response = await fetch(WORKFLOW_URL, { headers });

@@ -20,7 +20,33 @@ TEMP_WORKFLOW_FILENAME = "adbstudio-temp-workflow.json"
 REFERENCE_AUDIO_DIRECTORY = os.path.join("adb-studio", "reference-audio")
 REFERENCE_AUDIO_EXTENSIONS = {".aac", ".aiff", ".flac", ".m4a", ".mp3", ".oga", ".ogg", ".opus", ".wav"}
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".oga", ".flac", ".m4a", ".aac", ".opus"}
+WORKFLOW_SUFFIX = ".workflow.json"
 API_TOKEN_ENVIRONMENT_VARIABLE = "ADB_MUSIC_PLAYER_API_TOKEN"
+PLUGIN_ENVIRONMENT_FILE = os.path.join(os.path.dirname(__file__), ".env")
+
+
+def load_plugin_environment():
+    if API_TOKEN_ENVIRONMENT_VARIABLE in os.environ:
+        return
+    try:
+        with open(PLUGIN_ENVIRONMENT_FILE, encoding="utf-8") as environment_file:
+            for line in environment_file:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                name, value = line.split("=", 1)
+                if name.strip() != API_TOKEN_ENVIRONMENT_VARIABLE:
+                    continue
+                value = value.strip()
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+                    value = value[1:-1]
+                os.environ[API_TOKEN_ENVIRONMENT_VARIABLE] = value
+                return
+    except OSError:
+        return
+
+
+load_plugin_environment()
 
 
 def temporary_workflow_path():
@@ -63,6 +89,15 @@ def resolve_audio_file(path):
     if not os.path.isfile(audio_path) or os.path.splitext(audio_path)[1].lower() not in AUDIO_EXTENSIONS:
         raise web.HTTPNotFound()
     return audio_path
+
+
+def resolve_downloadable_file(path):
+    file_path = resolve_output_path(path)
+    is_audio = os.path.splitext(file_path)[1].lower() in AUDIO_EXTENSIONS
+    is_workflow = file_path.endswith(WORKFLOW_SUFFIX)
+    if not os.path.isfile(file_path) or not (is_audio or is_workflow):
+        raise web.HTTPNotFound()
+    return file_path
 
 
 def require_api_token(request):
@@ -339,7 +374,7 @@ async def serve_audio_file(request):
 @PromptServer.instance.routes.get("/adb-music-player/audio-download")
 async def download_audio_file(request):
     require_api_token(request)
-    path = resolve_audio_file(request.query.get("path", ""))
+    path = resolve_downloadable_file(request.query.get("path", ""))
     metadata = read_metadata(path)
     metadata["downloaded"] = True
     write_metadata(path, metadata)

@@ -43,6 +43,14 @@ variable. You can verify it from the Pod terminal with:
 echo "$ADB_MUSIC_PLAYER_API_TOKEN"
 ```
 
+Alternatively, create a `.env` file in this plugin directory:
+
+```text
+ADB_MUSIC_PLAYER_API_TOKEN=your-long-random-token
+```
+
+The plugin reads this file when ComfyUI loads it. A process environment variable takes precedence over the `.env` file. Keep `.env` private and do not commit it.
+
 To open an Adb Studio workflow, append the token in the URL hash:
 
 ```text
