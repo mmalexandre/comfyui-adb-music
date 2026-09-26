@@ -76,6 +76,30 @@ function tintedColor(color) {
     return `${color}33`;
 }
 
+function adbStudioWorkflowToken() {
+    const match = window.location.hash.match(/(?:^#|&)adb-music-player-token=([^&]*)/);
+    if (!match) {
+        return "";
+    }
+    try {
+        return decodeURIComponent(match[1]);
+    } catch (_) {
+        return "";
+    }
+}
+
+function apiHeaders(contentType) {
+    const headers = {};
+    const token = adbStudioWorkflowToken();
+    if (token) {
+        headers.Authorization = `Bearer ${token}`;
+    }
+    if (contentType) {
+        headers["Content-Type"] = contentType;
+    }
+    return headers;
+}
+
 app.registerExtension({
     name: "ADB.MusicPlayer",
 
@@ -183,7 +207,7 @@ app.registerExtension({
             audio.pause();
         }
 
-        function playFile(file, button, progress, timeLabel, durationLabel, startFraction) {
+        async function playFile(file, button, progress, timeLabel, durationLabel, startFraction) {
             if (currentButton === button && !audio.paused) {
                 stopCurrent();
                 return;
@@ -192,8 +216,13 @@ app.registerExtension({
             stopCurrent();
             currentFilePath = file.path;
             pendingSeekFraction = Number.isFinite(startFraction) ? startFraction : undefined;
-            audio.src = audioUrl(file.path);
-            audio.play().then(() => {
+            try {
+                const response = await fetch(audioUrl(file.path), { headers: apiHeaders() });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                audio.src = URL.createObjectURL(await response.blob());
+                await audio.play();
                 currentButton = button;
                 currentProgress = progress;
                 currentTimeLabel = timeLabel;
@@ -204,9 +233,9 @@ app.registerExtension({
                     pendingSeekFraction = undefined;
                 }
                 updateProgress();
-            }).catch(() => {
+            } catch (_) {
                 status.textContent = "Unable to play file";
-            });
+            }
         }
 
         audio.addEventListener("ended", stopCurrent);
@@ -262,7 +291,7 @@ app.registerExtension({
                         try {
                             const response = await fetch(`${METADATA_URL}?path=${encodeURIComponent(file.path)}`, {
                                 method: "POST",
-                                headers: { "Content-Type": "application/json" },
+                                headers: apiHeaders("application/json"),
                                 body: JSON.stringify({ color: file.color }),
                             });
                             if (!response.ok) {
@@ -288,16 +317,28 @@ app.registerExtension({
                 row.append(colorButton, palette);
 
                 const label = document.createElement("a");
-                label.href = downloadUrl(file.path);
-                label.download = file.name;
                 label.textContent = file.name;
                 label.title = file.name;
                 label.style.cssText = `color:var(--fg-color);cursor:pointer;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;text-decoration:${file.downloaded ? "underline" : "none"}`;
                 label.addEventListener("mouseenter", () => { if (!file.downloaded) label.style.textDecoration = "underline"; });
                 label.addEventListener("mouseleave", () => { if (!file.downloaded) label.style.textDecoration = "none"; });
-                label.addEventListener("click", () => {
-                    file.downloaded = true;
-                    label.style.textDecoration = "underline";
+                label.addEventListener("click", async (event) => {
+                    event.preventDefault();
+                    try {
+                        const response = await fetch(downloadUrl(file.path), { headers: apiHeaders() });
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
+                        const link = document.createElement("a");
+                        link.href = URL.createObjectURL(await response.blob());
+                        link.download = file.name;
+                        link.click();
+                        URL.revokeObjectURL(link.href);
+                        file.downloaded = true;
+                        label.style.textDecoration = "underline";
+                    } catch (_) {
+                        status.textContent = "Unable to download file";
+                    }
                 });
 
                 const playback = document.createElement("div");
@@ -385,7 +426,7 @@ app.registerExtension({
                 if (directory === "audio" || directory.startsWith("audio/")) {
                     directory = `output/${directory}`;
                 }
-                const response = await fetch(`${LIST_URL}?directory=${encodeURIComponent(directory)}`, { cache: "no-store" });
+                const response = await fetch(`${LIST_URL}?directory=${encodeURIComponent(directory)}`, { cache: "no-store", headers: apiHeaders() });
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
                 }
@@ -439,18 +480,6 @@ app.registerExtension({
         await refresh();
     },
 });
-
-function adbStudioWorkflowToken() {
-    const match = window.location.hash.match(/(?:^#|&)adb-music-player-token=([^&]*)/);
-    if (!match) {
-        return "";
-    }
-    try {
-        return decodeURIComponent(match[1]);
-    } catch (_) {
-        return "";
-    }
-}
 
 async function loadAdbStudioWorkflow(attempt = 0, token = adbStudioWorkflowToken()) {
     try {

@@ -147,6 +147,7 @@ def write_metadata(audio_path, metadata):
 
 @PromptServer.instance.routes.get("/adb-music-player/audio-files")
 async def list_audio_files(request):
+    require_api_token(request)
     audio_directory = resolve_audio_directory(request.query.get("directory", "output/audio"))
     files = []
 
@@ -306,6 +307,7 @@ async def get_workflow(request):
 
 @PromptServer.instance.routes.post("/adb-music-player/audio-metadata")
 async def update_audio_metadata(request):
+    require_api_token(request)
     path = resolve_audio_file(request.query.get("path", ""))
 
     try:
@@ -329,12 +331,14 @@ async def update_audio_metadata(request):
 
 @PromptServer.instance.routes.get("/adb-music-player/audio-file")
 async def serve_audio_file(request):
+    require_api_token(request)
     path = resolve_audio_file(request.query.get("path", ""))
     return web.FileResponse(path)
 
 
 @PromptServer.instance.routes.get("/adb-music-player/audio-download")
 async def download_audio_file(request):
+    require_api_token(request)
     path = resolve_audio_file(request.query.get("path", ""))
     metadata = read_metadata(path)
     metadata["downloaded"] = True
